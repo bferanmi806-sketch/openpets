@@ -932,6 +932,7 @@ export function openControlCenterWindow(route: ControlCenterRoute = "dashboard")
   });
 
   controlCenterWindow = window;
+  const windowWebContentsId = window.webContents.id;
   syncDockVisibilityForInternalUi();
   window.setMenu(null);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -953,7 +954,7 @@ export function openControlCenterWindow(route: ControlCenterRoute = "dashboard")
     console.error("Control Center renderer process gone.", details);
     logError("ui", "control center renderer gone", details);
   });
-  window.on("closed", () => { clearConversationSubscription(window.webContents.id); clearVoiceAssistantSubscription(window.webContents.id); controlCenterWindow = null; syncDockVisibilityForInternalUi(); });
+  window.on("closed", () => { clearConversationSubscription(windowWebContentsId); clearVoiceAssistantSubscription(windowWebContentsId); controlCenterWindow = null; syncDockVisibilityForInternalUi(); });
   window.once("ready-to-show", () => { window.show(); window.focus(); });
   pendingControlCenterRoute = safeRoute;
   window.webContents.on("did-finish-load", () => flushPendingControlCenterRoute(window));
