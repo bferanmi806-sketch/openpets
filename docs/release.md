@@ -453,6 +453,7 @@ packages/opencode/package.json
 packages/pet-format/package.json
 packages/pi/package.json
 packages/sdk/package.json
+packages/zed/package.json
 ```
 
 Set each top-level `version` field to the chosen version, for example:

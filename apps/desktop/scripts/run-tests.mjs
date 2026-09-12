@@ -110,6 +110,7 @@ const contractTests = [
 const distChecks = [
   "dist/check-opencode-desktop-setup.js",
   "dist/check-cursor-desktop.js",
+  "dist/check-zed-desktop.js",
   "dist/check-packaging-contract.js",
 ];
 
