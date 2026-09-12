@@ -6,8 +6,10 @@ import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-
 
 import {
   buildZedMcpEntry,
+  isValidOpenPetsMcpScriptPath,
   isValidOpenPetsPackageVersion,
   isValidPetId,
+  isValidZedNodeCommand,
   zedMcpServerName,
   type ZedMcpEntry,
   type ZedMcpPreviewOptions,
@@ -164,7 +166,7 @@ export function classifyZedMcpStatus(
 
   const entry = contextServers[zedMcpServerName];
   const expectedEntry = buildZedMcpEntry(expected);
-  const shape = inspectZedMcpEntry(entry, expectedEntry);
+  const shape = inspectZedMcpEntry(entry);
   if (shape === "invalid") {
     return {
       status: "invalid",
@@ -187,6 +189,21 @@ export function classifyZedMcpStatus(
       redactedDetails: "Existing context_servers.openpets entry is not managed by OpenPets",
     };
   }
+  if (isRecord(entry) && entry.remote === true) {
+    const disabled = entry.enabled === false;
+    return {
+      status: "needs-update",
+      message: disabled
+        ? "OpenPets MCP is configured for remote execution and disabled in Zed; local execution is required. Use replace to re-enable it."
+        : "OpenPets MCP is configured for remote execution in Zed; local execution is required.",
+      settingsPath,
+      canInstall: !disabled,
+      canReplace: true,
+      canRemove: true,
+      previewEntry: expectedEntry,
+    };
+  }
+
   if (shape === "disabled") {
     return {
       status: "disabled",
@@ -222,9 +239,8 @@ export function classifyZedMcpStatus(
   };
 }
 
-export function isManagedOpenPetsMcpEntry(value: unknown, expectedOptions?: ZedMcpPreviewOptions): boolean {
-  const expected = expectedOptions ? buildZedMcpEntry(expectedOptions) : undefined;
-  const shape = inspectZedMcpEntry(value, expected);
+export function isManagedOpenPetsMcpEntry(value: unknown): boolean {
+  const shape = inspectZedMcpEntry(value);
   return shape === "managed" || shape === "disabled";
 }
 
@@ -241,6 +257,9 @@ export function planZedMcpInstall(
     return { ok: false, message: status.message, reason: "invalid-schema" };
   }
   if (status.status === "disabled") {
+    return { ok: false, message: "Cannot install: OpenPets MCP is disabled in Zed settings. Use replace to explicitly re-enable it.", reason: "invalid-schema" };
+  }
+  if (status.status === "needs-update" && !status.canInstall) {
     return { ok: false, message: "Cannot install: OpenPets MCP is disabled in Zed settings. Use replace to explicitly re-enable it.", reason: "invalid-schema" };
   }
   if (status.status === "conflict" && !allowReplace) {
@@ -276,7 +295,7 @@ export function planZedMcpReplace(
   const currentEntry = getOpenPetsEntry(existing.config);
   const nextEntry = status.status === "conflict"
     ? buildZedMcpEntry(options)
-    : preserveManagedFields(currentEntry, options, status.status === "disabled");
+    : preserveManagedFields(currentEntry, options, isRecord(currentEntry) && currentEntry.enabled === false);
   return planZedSettingsWrite(settingsPath, existing.content, existing.exists, nextEntry);
 }
 
@@ -740,9 +759,9 @@ function missingStatus(settingsPath: string, expected: ZedMcpPreviewOptions, mes
   };
 }
 
-function inspectZedMcpEntry(value: unknown, expected?: ZedMcpEntry): "managed" | "disabled" | "conflict" | "invalid" {
+function inspectZedMcpEntry(value: unknown): "managed" | "disabled" | "conflict" | "invalid" {
   if (!isRecord(value)) return "invalid";
-  const commandLooksManaged = looksLikeOpenPetsCommand(value.command, value.args, expected);
+  const commandLooksManaged = looksLikeOpenPetsCommand(value.command, value.args);
   if (!isValidZedEntryShape(value)) return commandLooksManaged ? "invalid" : "conflict";
   if (!commandLooksManaged) return "conflict";
   return value.enabled === false ? "disabled" : "managed";
@@ -759,13 +778,11 @@ function isValidZedEntryShape(value: Record<string, unknown>): boolean {
   return true;
 }
 
-function looksLikeOpenPetsCommand(command: unknown, args: unknown, expected?: ZedMcpEntry): boolean {
+function looksLikeOpenPetsCommand(command: unknown, args: unknown): boolean {
   if (typeof command !== "string" || !Array.isArray(args) || !args.every((arg) => typeof arg === "string")) return false;
   const parts = args as readonly string[];
   if (command === "npx") return isPublishedOpenPetsArgs(parts);
-  if (command === "node") return isLocalOpenPetsArgs(parts) || isExpectedLocalOpenPetsArgs(parts, expected);
-  if (expected && command === expected.command) return isExpectedLocalOpenPetsArgs(parts, expected);
-  return false;
+  return isNodeCommand(command) && isLocalOpenPetsArgs(parts);
 }
 
 function isPublishedOpenPetsArgs(args: readonly string[]): boolean {
@@ -778,15 +795,11 @@ function isPublishedOpenPetsArgs(args: readonly string[]): boolean {
 function isLocalOpenPetsArgs(args: readonly string[]): boolean {
   if (args.length < 1) return false;
   const scriptPath = args[0] ?? "";
-  const isOpenPetsPath = /(?:^|[\\/])node_modules[\\/]@open-pets[\\/]mcp[\\/]dist[\\/]index\.js$/u.test(scriptPath)
-    || /(?:^|[\\/])packages[\\/]mcp[\\/]dist[\\/]index\.js$/u.test(scriptPath);
-  return isOpenPetsPath && isAbsolute(scriptPath) && hasValidPetArgs(args.slice(1));
+  return isValidOpenPetsMcpScriptPath(scriptPath) && hasValidPetArgs(args.slice(1));
 }
 
-function isExpectedLocalOpenPetsArgs(args: readonly string[], expected?: ZedMcpEntry): boolean {
-  if (!expected || expected.command === "npx" || expected.args.length < 1 || args.length < 1) return false;
-  if (args[0] !== expected.args[0] || !isAbsolute(args[0] ?? "")) return false;
-  return hasValidPetArgs(args.slice(1));
+function isNodeCommand(command: string): boolean {
+  return isValidZedNodeCommand(command);
 }
 
 function hasValidPetArgs(args: readonly string[]): boolean {
@@ -810,7 +823,6 @@ function preserveManagedFields(existing: unknown, options: ZedMcpPreviewOptions,
   return {
     ...base,
     ...(existing.enabled === true && !reenable ? { enabled: true } : {}),
-    ...(typeof existing.remote === "boolean" ? { remote: existing.remote } : {}),
     ...(isRecord(existing.env) && Object.values(existing.env).every((entry) => typeof entry === "string") ? { env: existing.env as Record<string, string> } : {}),
     ...(typeof existing.timeout === "number" && Number.isSafeInteger(existing.timeout) && existing.timeout >= 0 ? { timeout: existing.timeout } : {}),
     ...(reenable ? { enabled: true } : {}),

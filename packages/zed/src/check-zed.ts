@@ -118,7 +118,19 @@ try {
   const customStatusPath = settingsPath("custom-node-status");
   writeSettings(customStatusPath, JSON.stringify({ context_servers: { openpets: customLocalEntry } }, null, 2));
   assert.equal(classifyZedMcpStatus(readZedSettings(customStatusPath), customStatusPath, { ...expected, commandMode: "bundled", mcpEntryPath: localEntryPath, nodeCommand: customNodeCommand }).status, "installed");
+  assert.equal(classifyZedMcpStatus(readZedSettings(customStatusPath), customStatusPath, expected).status, "needs-update");
+  assert.equal(classifyZedMcpStatus(readZedSettings(customStatusPath), customStatusPath, { ...expected, commandMode: "local", mcpEntryPath: localEntryPath, nodeCommand: join(root, "different-node") }).status, "needs-update");
+  assert.equal(isManagedOpenPetsMcpEntry(customLocalEntry), true);
+  const customRemovePath = settingsPath("custom-node-remove");
+  writeSettings(customRemovePath, JSON.stringify({ context_servers: { openpets: customLocalEntry } }, null, 2));
+  const customRemovePlan = planZedMcpRemove(customRemovePath, expected);
+  executePlan(customRemovePlan);
+  const customRemoved = parseZedSettings(readFileSync(customRemovePath, "utf8"));
+  assert.equal(customRemoved.ok, true);
+  if (customRemoved.ok) assert.equal((customRemoved.value.context_servers as Record<string, unknown>).openpets, undefined);
   assert.throws(() => buildZedMcpEntry({ ...expected, commandMode: "local", mcpEntryPath: "relative.js" }));
+  assert.throws(() => buildZedMcpEntry({ ...expected, commandMode: "local", mcpEntryPath: join(root, "not-openpets.js") }));
+  assert.throws(() => buildZedMcpEntry({ ...expected, commandMode: "local", mcpEntryPath: localEntryPath, nodeCommand: `${root}\\..\\node` }));
 
   // Clean install creates only the settings file and managed OpenPets entry.
   const cleanPath = settingsPath("clean-install");
@@ -166,15 +178,16 @@ try {
   assert.equal(classifyZedMcpStatus(readZedSettings(petDriftPath), petDriftPath, expected).status, "needs-update");
 
   const localStatusPath = settingsPath("local-status");
-  const localStatusEntryPath = join(root, "local-mcp.js");
+  const localStatusEntryPath = join(root, "local", "packages", "mcp", "dist", "index.js");
   writeSettings(localStatusPath, JSON.stringify({ context_servers: { openpets: { command: "node", args: [localStatusEntryPath, "--pet", "helper"] } } }, null, 2));
   assert.equal(classifyZedMcpStatus(readZedSettings(localStatusPath), localStatusPath, { ...expected, commandMode: "local", mcpEntryPath: localStatusEntryPath }).status, "needs-update");
 
-  // Zed-specific optional fields are retained while a managed command is updated.
-  const remotePath = settingsPath("remote-preserved");
+  // Remote execution is never retained; local OpenPets execution is required.
+  const remotePath = settingsPath("remote-corrected");
   writeSettings(remotePath, JSON.stringify({ context_servers: {
     openpets: { ...buildZedMcpEntry({ mcpVersion: "3.2.0", petId: "helper" }), enabled: true, remote: true, env: { OPENPETS_DEBUG: "1" }, timeout: 30 },
   } }, null, 2));
+  assert.equal(classifyZedMcpStatus(readZedSettings(remotePath), remotePath, expected).status, "needs-update");
   const remotePlan = planZedMcpInstall(remotePath, expected);
   executePlan(remotePlan);
   const remoteConfig = parseZedSettings(readFileSync(remotePath, "utf8"));
@@ -183,7 +196,31 @@ try {
     assert.deepEqual((remoteConfig.value.context_servers as Record<string, unknown>).openpets, {
       ...published,
       enabled: true,
-      remote: true,
+      env: { OPENPETS_DEBUG: "1" },
+      timeout: 30,
+    });
+  }
+
+  const remoteDisabledPath = settingsPath("remote-disabled");
+  const remoteDisabledSource = JSON.stringify({ context_servers: {
+    openpets: { ...buildZedMcpEntry({ mcpVersion: "3.2.0", petId: "helper" }), enabled: false, remote: true, env: { OPENPETS_DEBUG: "1" }, timeout: 30 },
+  } }, null, 2);
+  writeSettings(remoteDisabledPath, remoteDisabledSource);
+  const remoteDisabledStatus = classifyZedMcpStatus(readZedSettings(remoteDisabledPath), remoteDisabledPath, expected);
+  assert.equal(remoteDisabledStatus.status, "needs-update");
+  assert.equal(remoteDisabledStatus.canInstall, false);
+  assert.equal(remoteDisabledStatus.canReplace, true);
+  const remoteDisabledInstall = planZedMcpInstall(remoteDisabledPath, expected);
+  assert.equal("ok" in remoteDisabledInstall && remoteDisabledInstall.ok === false, true);
+  assert.equal(readFileSync(remoteDisabledPath, "utf8"), remoteDisabledSource);
+  const remoteDisabledReplace = planZedMcpReplace(remoteDisabledPath, expected);
+  executePlan(remoteDisabledReplace);
+  const remoteReplaced = parseZedSettings(readFileSync(remoteDisabledPath, "utf8"));
+  assert.equal(remoteReplaced.ok, true);
+  if (remoteReplaced.ok) {
+    assert.deepEqual((remoteReplaced.value.context_servers as Record<string, unknown>).openpets, {
+      ...published,
+      enabled: true,
       env: { OPENPETS_DEBUG: "1" },
       timeout: 30,
     });
@@ -407,8 +444,11 @@ try {
   // Published, local, bundled, and unpinned command detection stays explicit.
   assert.equal(isManagedOpenPetsMcpEntry(published), true);
   assert.equal(isManagedOpenPetsMcpEntry(buildZedMcpEntry({ ...expected, commandMode: "local", mcpEntryPath: localEntryPath })), true);
+  assert.equal(isManagedOpenPetsMcpEntry(customLocalEntry), true);
   assert.equal(isManagedOpenPetsMcpEntry({ command: "npx", args: ["-y", "@open-pets/mcp@latest"] }), false);
+  assert.equal(isManagedOpenPetsMcpEntry({ command: customNodeCommand, args: [join(root, "not-openpets.js")] }), false);
   assert.equal(isManagedOpenPetsMcpEntry({ command: "node", args: ["relative/packages/mcp/dist/index.js"] }), false);
+  assert.equal(isManagedOpenPetsMcpEntry({ command: customNodeCommand, args: [localEntryPath, "--pet", "bad/pet"] }), false);
 
   // Direct JSONC edits reject malformed input without returning a mutation.
   assert.equal(typeof updateZedSettingsText(`{ "theme": "dark", }`, ["context_servers", "openpets"], published), "string");

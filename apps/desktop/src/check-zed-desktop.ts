@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { buildZedMcpEntry, classifyZedMcpStatus, executeZedMcpWrite, getZedGlobalSettingsPath, planZedMcpInstall, planZedMcpRemove, readZedSettings } from "@open-pets/zed";
+import { buildZedMcpEntry, classifyZedMcpStatus, executeZedMcpWrite, getZedGlobalSettingsPath, planZedMcpInstall, planZedMcpRemove, planZedMcpReplace, readZedSettings } from "@open-pets/zed";
 
 const root = mkdtempSync(join(tmpdir(), "openpets-zed-desktop-"));
 
@@ -32,6 +32,20 @@ try {
   assert.match(removed, /"theme": "dark"/);
   assert.match(removed, /"other"/);
   assert.doesNotMatch(removed, /"openpets"/);
+
+  const remoteSettingsPath = join(root, "remote-settings.json");
+  writeFileSync(remoteSettingsPath, JSON.stringify({ context_servers: {
+    openpets: { ...buildZedMcpEntry(options), enabled: false, remote: true },
+  } }, null, 2), "utf8");
+  const remoteStatus = classifyZedMcpStatus(readZedSettings(remoteSettingsPath), remoteSettingsPath, options);
+  assert.equal(remoteStatus.status, "needs-update");
+  assert.equal(remoteStatus.canInstall, false);
+  const remoteReplace = planZedMcpReplace(remoteSettingsPath, options);
+  assert.equal("targetPath" in remoteReplace, true);
+  if ("targetPath" in remoteReplace) executeZedMcpWrite(remoteReplace);
+  const remoteEntry = JSON.parse(readFileSync(remoteSettingsPath, "utf8")).context_servers.openpets;
+  assert.equal(remoteEntry.enabled, true);
+  assert.equal(Object.hasOwn(remoteEntry, "remote"), false);
 
   mkdirSync(join(root, "nested"), { recursive: true });
   assert.equal(readZedSettings(join(root, "nested", "missing.json")).ok, true);

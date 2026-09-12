@@ -924,6 +924,7 @@ OpenPets publishes these public npm packages, in dependency order:
 @open-pets/opencode
 @open-pets/openclaw
 @open-pets/cursor
+@open-pets/zed
 @open-pets/pi
 @open-pets/cli
 install-pet

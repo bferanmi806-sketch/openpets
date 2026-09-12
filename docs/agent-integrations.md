@@ -205,11 +205,12 @@ The package supports pinned published MCP commands (`npx -y
 @open-pets/mcp@VERSION`), plus local and bundled Node entry paths (using the
 desktop's configured Node.js command when applicable). It reports
 `missing`, `installed`, `disabled`, `needs-update`, `conflict`, `invalid`, and
-`error` states, refuses unsafe or ambiguous mutations, preserves managed
-`remote`/environment/timeout fields, and requires explicit replacement to
-re-enable a disabled entry. Planned writes are rejected when the settings file
-changes before execution. The desktop Control Center manages the same
-status-aware lifecycle through `apps/desktop/src/agent-setup.ts`; the CLI
+`error` states, refuses unsafe or ambiguous mutations, strips unsupported
+`remote` execution during correction while preserving managed environment and
+timeout fields, and requires explicit replacement to re-enable a disabled entry.
+Planned writes are rejected when the settings file changes before execution.
+The desktop Control Center manages the same status-aware lifecycle through
+`apps/desktop/src/agent-setup.ts`; the CLI
 manages the global file with `openpets configure --agent zed`. Both paths use
 the package's journaled, crash-recoverable atomic plan and write APIs rather than
 editing JSONC directly. Existing settings remain in place while their verified

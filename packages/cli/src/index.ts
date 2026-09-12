@@ -317,11 +317,11 @@ export async function configureProject(options: ConfigureOptions): Promise<void>
 
 async function configureZedGlobal(options: ConfigureOptions): Promise<void> {
   const client = createOpenPetsClient();
-  const selectedPet = await resolveConfiguredPet(client, options.petId);
+  const selectedPet = options.petId ? await resolveConfiguredPet(client, options.petId) : undefined;
   const packageVersion = getPackageVersion();
   const previewOptions = {
     mcpVersion: packageVersion,
-    petId: selectedPet.id,
+    petId: selectedPet?.id,
     commandMode: options.localDev ? "local" as const : "published" as const,
     mcpEntryPath: options.localDev ? require.resolve("@open-pets/mcp") : undefined,
   };
@@ -338,16 +338,20 @@ async function configureZedGlobal(options: ConfigureOptions): Promise<void> {
   if (status.status === "invalid" || status.status === "error") {
     throw new CliError(`${status.message} Fix ${settingsPath}, then rerun setup.`);
   }
-  if ((status.status === "conflict" || status.status === "disabled") && !options.force) {
+  const requiresReplacement = status.status === "conflict"
+    || status.status === "disabled"
+    || (status.status === "needs-update" && !status.canInstall);
+  if (requiresReplacement && !options.force) {
     throw new CliError(`${status.message} Rerun with --force to replace the managed Zed entry.`);
   }
 
-  const plan = status.status === "conflict" || status.status === "disabled"
+  const plan = requiresReplacement
     ? planZedMcpReplace(settingsPath, previewOptions)
     : planZedMcpInstall(settingsPath, previewOptions);
   if ("ok" in plan) throw new CliError(plan.message);
   executeZedMcpWrite(plan);
-  process.stdout.write(`OpenPets configured for Zed.\nPet: ${sanitizeTerminalText(selectedPet.displayName)} (${selectedPet.id})\n${plan.backupPath ? `Backup: ${plan.backupPath}\n` : ""}Restart or reload Zed to load OpenPets.\n`);
+  const petMessage = selectedPet ? `Pet: ${sanitizeTerminalText(selectedPet.displayName)} (${selectedPet.id})\n` : "";
+  process.stdout.write(`OpenPets configured for Zed.\n${petMessage}${plan.backupPath ? `Backup: ${plan.backupPath}\n` : ""}Restart or reload Zed to load OpenPets.\n`);
 }
 
 async function configureCursorProject(options: ConfigureOptions, projectDir: string): Promise<void> {

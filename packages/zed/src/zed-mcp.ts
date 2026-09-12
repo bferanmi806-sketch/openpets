@@ -56,16 +56,26 @@ export function isValidOpenPetsPackageVersion(value: string): boolean {
   return prerelease === undefined || prerelease.split(".").every((identifier) => !/^0\d+$/u.test(identifier));
 }
 
+export function isValidZedNodeCommand(value: string): boolean {
+  return value === "node" || (isAbsolute(value) && value.trim() === value && value.length <= 4096 && !/[\0\r\n]/u.test(value) && !hasParentTraversal(value));
+}
+
+export function isValidOpenPetsMcpScriptPath(value: string): boolean {
+  if (!isAbsolute(value) || value.length > 4096 || /[\0\r\n]/u.test(value) || hasParentTraversal(value)) return false;
+  return /(?:^|[\\/])node_modules[\\/]@open-pets[\\/]mcp[\\/]dist[\\/]index\.js$/u.test(value)
+    || /(?:^|[\\/])packages[\\/]mcp[\\/]dist[\\/]index\.js$/u.test(value);
+}
+
 export function buildZedMcpEntry(options: ZedMcpPreviewOptions): ZedMcpEntry {
   const petArgs = options.petId === undefined ? [] : ["--pet", validateOpenPetsPetId(options.petId)];
   const mode = options.commandMode ?? "published";
 
   if (mode === "local" || mode === "bundled") {
-    if (!options.mcpEntryPath || !isAbsolute(options.mcpEntryPath)) {
-      throw new Error("Zed local MCP preview requires an absolute MCP entry path.");
+    if (!options.mcpEntryPath || !isValidOpenPetsMcpScriptPath(options.mcpEntryPath)) {
+      throw new Error("Zed local MCP preview requires a safe absolute OpenPets MCP entry path.");
     }
     const nodeCommand = options.nodeCommand ?? "node";
-    if (!nodeCommand || nodeCommand.trim() !== nodeCommand || nodeCommand.length > 4096 || /[\0\r\n]/u.test(nodeCommand)) {
+    if (!isValidZedNodeCommand(nodeCommand)) {
       throw new Error("Invalid Zed Node.js command.");
     }
     return { command: nodeCommand, args: [options.mcpEntryPath, ...petArgs] };
@@ -101,4 +111,8 @@ export function getZedGlobalSettingsPath(
   platform: NodeJS.Platform | string = process.platform,
 ): string {
   return join(getZedGlobalSettingsDir(env, homeDir, platform), "settings.json");
+}
+
+function hasParentTraversal(path: string): boolean {
+  return path.split(/[\\/]+/u).includes("..");
 }

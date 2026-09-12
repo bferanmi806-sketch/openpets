@@ -301,11 +301,11 @@ process.exit(0);
   for (const key of zedEnvKeys) delete process.env[key];
   process.env[process.platform === "win32" ? "APPDATA" : "XDG_CONFIG_HOME"] = zedRoot;
   try {
-    await configureProject({ agent: "zed", petId: "fixer", cwd: join(dir, "ignored-project"), yes: true, force: false, localDev: false });
+    await configureProject({ agent: "zed", cwd: join(dir, "ignored-project"), yes: true, force: false, localDev: false });
     const zedSettingsPath = process.platform === "win32" ? join(zedRoot, "Zed", "settings.json") : join(zedRoot, "zed", "settings.json");
     const zedSettings = JSON.parse(readFileSync(zedSettingsPath, "utf8")) as { readonly context_servers?: Record<string, { readonly command?: string; readonly args?: readonly string[] }>; };
     assert.equal(zedSettings.context_servers?.openpets?.command, "npx");
-    assert.deepEqual(zedSettings.context_servers?.openpets?.args, ["-y", `@open-pets/mcp@${packageVersion}`, "--pet", "fixer"]);
+    assert.deepEqual(zedSettings.context_servers?.openpets?.args, ["-y", `@open-pets/mcp@${packageVersion}`]);
 
     writeFileSync(zedSettingsPath, JSON.stringify({ context_servers: { openpets: { command: "custom", args: ["serve"] }, other: { command: "other", args: [] } } }, null, 2), "utf8");
     await assert.rejects(() => configureProject({ agent: "zed", petId: "fixer", cwd: process.cwd(), yes: true, force: false, localDev: false }));
@@ -313,6 +313,15 @@ process.exit(0);
     const zedReplaced = JSON.parse(readFileSync(zedSettingsPath, "utf8")) as { readonly context_servers?: Record<string, { readonly command?: string; readonly args?: readonly string[] }> };
     assert.deepEqual(zedReplaced.context_servers?.other?.args, []);
     assert.deepEqual(zedReplaced.context_servers?.openpets?.args, ["-y", `@open-pets/mcp@${packageVersion}`, "--pet", "fixer"]);
+
+    writeFileSync(zedSettingsPath, JSON.stringify({ context_servers: {
+      openpets: { command: "npx", args: ["-y", `@open-pets/mcp@${packageVersion}`, "--pet", "fixer"], enabled: false, remote: true },
+    } }, null, 2), "utf8");
+    await assert.rejects(() => configureProject({ agent: "zed", petId: "fixer", cwd: process.cwd(), yes: true, force: false, localDev: false }));
+    await configureProject({ agent: "zed", petId: "fixer", cwd: process.cwd(), yes: true, force: true, localDev: false });
+    const zedRemoteCorrected = JSON.parse(readFileSync(zedSettingsPath, "utf8")) as { readonly context_servers?: Record<string, { readonly enabled?: boolean; readonly remote?: boolean }> };
+    assert.equal(zedRemoteCorrected.context_servers?.openpets?.enabled, true);
+    assert.equal(zedRemoteCorrected.context_servers?.openpets?.remote, undefined);
   } finally {
     for (const [key, value] of previousZedEnv) {
       if (value === undefined) delete process.env[key];

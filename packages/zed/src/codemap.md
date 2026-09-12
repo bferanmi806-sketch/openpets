@@ -53,5 +53,6 @@ check-zed.ts imports the public APIs for contract validation
   absent; ambiguous or unsafe recovery artifacts fail closed.
 - Only `context_servers.openpets` is changed or removed.
 - Disabled entries require an explicit replace operation before re-enabling.
-- User-controlled `remote`, `env`, `timeout`, and enabled fields are retained
-  for recognized managed entries.
+- User-controlled `env`, `timeout`, and enabled fields are retained for
+  recognized managed entries; unsupported `remote` execution is stripped during
+  correction.

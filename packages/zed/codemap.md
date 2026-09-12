@@ -39,9 +39,10 @@ management; it does not provide runtime hooks or use IPC itself.
   that appeared during the operation. A sibling lock serializes OpenPets
   writers, and execution aborts if settings content or existence changed after
   planning. Write support paths are restricted to the settings directory.
-- Managed `enabled`, `remote`, `env`, and `timeout` fields are preserved during
-  updates. A disabled managed entry is not silently re-enabled by install;
-  replace is the explicit re-enable operation.
+- Managed `enabled`, `env`, and `timeout` fields are preserved during updates;
+  unsupported `remote` execution is stripped during correction. A disabled
+  managed entry is not silently re-enabled by install; replace is the explicit
+  re-enable operation.
 
 ## Flow
 
@@ -71,7 +72,7 @@ management; it does not provide runtime hooks or use IPC itself.
 
 ### Package Surface
 
-- Package version: `3.3.0`.
+- Package version: `3.5.0`.
 - Main export: `dist/index.js` with declarations at `dist/index.d.ts`.
 - Runtime dependency: `jsonc-parser`.
 - Current consumers: `apps/desktop/src/agent-setup.ts` and

@@ -9,7 +9,7 @@ import { buildCursorRulesPreview, classifyCursorMcpStatus, executeCursorMcpWrite
 import { buildOpenPetsOnlyPreview, type RedactedPreview } from "@open-pets/cursor";
 import { buildOpenClawCommand, classifyOpenClawStatus, openClawMaxStructuredOutputBytes, parseOpenClawVersion, planOpenClawMutation, type OpenClawCommandAction, type OpenClawPluginStatus } from "@open-pets/openclaw/management";
 import { doctorOpenCodeGlobalSetup, getGlobalOpenCodeConfigDir, parseOpenCodeConfig, prepareOpenCodeGlobalRemove, prepareOpenCodeGlobalSetup, writePreparedOpenCodeGlobalRemove, writePreparedOpenCodeGlobalSetup } from "@open-pets/opencode";
-import { buildZedMcpEntry, classifyZedMcpStatus, executeZedMcpWrite, getZedGlobalSettingsPath, planZedMcpInstall, planZedMcpRemove, planZedMcpReplace, readZedSettings, type ZedMcpEntry, type ZedMcpPreviewOptions, type ZedMcpStatusResult } from "@open-pets/zed";
+import { buildZedMcpEntry, classifyZedMcpStatus, executeZedMcpWrite, getZedGlobalSettingsPath, isValidZedNodeCommand, planZedMcpInstall, planZedMcpRemove, planZedMcpReplace, readZedSettings, type ZedMcpEntry, type ZedMcpPreviewOptions, type ZedMcpStatusResult } from "@open-pets/zed";
 
 import { getAppStateSnapshot, updatePreferences, type InstalledPetState, type OpenPetsStateV1 } from "./app-state.js";
 import { doctorClaudeOpenPetsMemory, installClaudeOpenPetsMemory, uninstallClaudeOpenPetsMemory, type ClaudeOpenPetsMemoryStatus } from "./claude-memory.js";
@@ -654,6 +654,7 @@ function normalizeOptionalCommandPath(value: unknown, label: string): string | u
   if (!trimmed) return undefined;
   if (trimmed.length > 4096 || /[\r\n\0]/.test(trimmed)) throw new Error(`${label} command path is invalid.`);
   if (!isAbsolute(trimmed)) throw new Error(`${label} command path must be a full absolute path.`);
+  if (label === "Node.js" && !isValidZedNodeCommand(trimmed)) throw new Error(`${label} command path is invalid.`);
   if (process.platform === "win32" && /[&|<>^%!]/.test(trimmed)) throw new Error(`${label} command path contains unsupported shell characters.`);
   try {
     const stat = statSync(trimmed);
